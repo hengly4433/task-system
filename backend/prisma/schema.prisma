@@ -1,0 +1,950 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ============================================================================
+// MULTI-TENANCY - Company/Organization management for SaaS
+// ============================================================================
+
+model Tenant {
+  tenantId      BigInt   @id @default(autoincrement()) @map("tenant_id")
+  name          String   @db.VarChar(200)
+  slug          String   @unique @db.VarChar(100)  // Subdomain identifier
+  domain        String?  @unique @db.VarChar(255)  // Custom domain
+  logoUrl       String?  @map("logo_url") @db.VarChar(500)
+  primaryColor  String?  @default("#f1184c") @map("primary_color") @db.VarChar(7)
+  status        String   @default("ACTIVE") @db.VarChar(20)  // ACTIVE, SUSPENDED, TRIAL
+  
+  // Company Information
+  description   String?  @db.Text
+  industry      String?  @db.VarChar(100)
+  companySize   String?  @map("company_size") @db.VarChar(50) // e.g., "1-10", "11-50", "51-200"
+  foundedYear   Int?     @map("founded_year")
+  taxId         String?  @map("tax_id") @db.VarChar(50)
+  
+  // Contact Information
+  phone         String?  @db.VarChar(30)
+  email         String?  @db.VarChar(255)
+  website       String?  @db.VarChar(255)
+  
+  // Address
+  address       String?  @db.VarChar(255)
+  city          String?  @db.VarChar(100)
+  state         String?  @db.VarChar(100)
+  country       String?  @db.VarChar(100)
+  postalCode    String?  @map("postal_code") @db.VarChar(20)
+  
+  // Subscription & Billing
+  plan          String   @default("FREE") @db.VarChar(50)  // FREE, STARTER, PRO, ENTERPRISE
+  billingEmail  String?  @map("billing_email") @db.VarChar(255)
+  trialEndsAt   DateTime? @map("trial_ends_at") @db.Timestamptz(6)
+  subscriptionEndsAt DateTime? @map("subscription_ends_at") @db.Timestamptz(6)  // When current subscription ends
+  gracePeriodEndsAt DateTime? @map("grace_period_ends_at") @db.Timestamptz(6)   // When grace period ends
+  gracePeriodDays Int @default(3) @map("grace_period_days")  // Configurable grace period length
+  
+  // Limits & Quotas
+  maxUsers      Int      @default(5) @map("max_users")
+  maxProjects   Int      @default(10) @map("max_projects")
+  maxStorage    BigInt   @default(1073741824) @map("max_storage")  // 1GB in bytes
+  
+  createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt     DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt     DateTime? @map("deleted_at") @db.Timestamptz(6)
+
+  // Relations
+  members        TenantMember[]
+  departments    Department[]
+  teams          Team[]
+  workspaces     Workspace[]
+  projects       Project[]
+  positions      Position[]
+  roles          Role[]
+  labels         Label[]
+  taskStatuses   TaskStatus[]
+  meetings       Meeting[]
+  chatThreads    ChatThread[]
+  paymentHistory PaymentHistory[]
+  usageAlerts    UsageAlert[]
+
+  @@index([slug])
+  @@index([status])
+  @@map("tenants")
+}
+
+model TenantMember {
+  id            BigInt   @id @default(autoincrement())
+  tenantId      BigInt   @map("tenant_id")
+  userId        BigInt   @map("user_id")
+  role          String   @default("MEMBER") @db.VarChar(50)  // OWNER, ADMIN, MEMBER
+  isDefault     Boolean  @default(false) @map("is_default")  // User's default tenant
+  invitedAt     DateTime @default(now()) @map("invited_at") @db.Timestamptz(6)
+  joinedAt      DateTime? @map("joined_at") @db.Timestamptz(6)
+  status        String   @default("PENDING") @db.VarChar(20)  // PENDING, ACTIVE, SUSPENDED
+
+  tenant Tenant @relation(fields: [tenantId], references: [tenantId], onDelete: Cascade)
+  user   User   @relation(fields: [userId], references: [userId], onDelete: Cascade)
+
+  @@unique([tenantId, userId])
+  @@index([userId])
+  @@map("tenant_members")
+}
+
+
+model User {
+  userId       BigInt   @id @default(autoincrement()) @map("user_id")
+  username     String   @unique @db.VarChar(50)
+  email        String   @unique @db.VarChar(255)
+  passwordHash String?  @map("password_hash") @db.VarChar(255)
+  fullName     String?  @map("full_name") @db.VarChar(150)
+  positionId   BigInt?  @map("position_id")
+  skypeId      String?  @map("skype_id") @db.VarChar(100)
+  profileImageUrl String? @map("profile_image_url") @db.VarChar(500)
+  presenceStatus String  @default("ACTIVE") @map("presence_status") @db.VarChar(20)
+  lastSeenAt   DateTime? @map("last_seen_at") @db.Timestamptz(6)
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt    DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt    DateTime? @map("deleted_at") @db.Timestamptz(6)
+
+  // Relations
+  position         Position? @relation(fields: [positionId], references: [positionId], onDelete: SetNull)
+  roles            UserRoleMapping[]
+  departments      UserDepartment[]
+  ownedProjects     Project[] @relation("ProjectOwner")
+  createdProjects   Project[] @relation("ProjectCreatedBy")
+  projectMembers    ProjectMember[]
+  createdTasks      Task[] @relation("TaskCreatedBy")
+  assignedTasks     Task[] @relation("TaskAssignedTo")
+  testingTasks      Task[] @relation("TaskTester")
+  watchedTasks      TaskWatcher[]
+  comments          TaskComment[]
+  uploadedAttachments Attachment[]
+  timeEntries       TimeEntry[]
+  notifications     Notification[]
+  preferences       UserPreference[]
+  activityLogs      ActivityLog[]
+  bugReports        BugReport[]
+  taskHistory       TaskHistory[]
+  announcements     Announcement[]
+  teamsOwned        Team[] @relation("TeamOwner")
+  teamMembers       TeamMember[]
+  workspacesOwned   Workspace[] @relation("WorkspaceOwner")
+  workspaceMembers  WorkspaceMember[]
+  meetingsCreated   Meeting[] @relation("MeetingCreator")
+  meetingAttendees  MeetingAttendee[]
+  uploadedMeetingAttachments MeetingAttachment[]
+  chatThreadsCreated ChatThread[] @relation("ChatThreadCreator")
+  chatParticipations ChatParticipant[] @relation("ChatParticipantUser")
+  chatMessages      ChatMessage[] @relation("ChatMessageSender")
+  chatReactions     ChatMessageReaction[] @relation("ChatReactionUser")
+  passwordSetupTokens PasswordSetupToken[]
+  tenantMembers     TenantMember[]
+
+  @@map("users")
+}
+
+model Position {
+  positionId   BigInt   @id @default(autoincrement()) @map("position_id")
+  tenantId     BigInt   @map("tenant_id")
+  positionName String   @map("position_name") @db.VarChar(100)
+  description  String?  @db.Text
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  
+  tenant Tenant @relation(fields: [tenantId], references: [tenantId], onDelete: Cascade)
+  users  User[]
+  
+  @@unique([tenantId, positionName])
+  @@index([tenantId])
+  @@map("positions")
+}
+
+model Role {
+  roleId      BigInt  @id @default(autoincrement()) @map("role_id")
+  tenantId    BigInt? @map("tenant_id")  // null = system role, shared across tenants
+  roleName    String  @map("role_name") @db.VarChar(50)
+  description String? @db.Text
+  color       String? @db.VarChar(7)  // Hex color e.g. #FF5733
+  isSystem    Boolean @default(false) @map("is_system")  // System roles cannot be modified
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  tenant      Tenant? @relation(fields: [tenantId], references: [tenantId], onDelete: Cascade)
+  users       UserRoleMapping[]
+  permissions RolePermission[]
+
+  @@unique([tenantId, roleName])
+  @@index([tenantId])
+  @@map("roles")
+}
+
+model UserRoleMapping {
+  mappingId  BigInt   @id @default(autoincrement()) @map("mapping_id")
+  userId     BigInt   @map("user_id")
+  roleId     BigInt   @map("role_id")
+  assignedAt DateTime @default(now()) @map("assigned_at") @db.Timestamptz(6)
+
+  user User @relation(fields: [userId], references: [userId], onDelete: Cascade)
+  role Role @relation(fields: [roleId], references: [roleId], onDelete: Restrict)
+
+  @@unique([userId, roleId])
+  @@map("user_role_mappings")
+}
+
+// ============================================================================
+// PERMISSION SYSTEM - Fine-grained access control
+// ============================================================================
+
+model Permission {
+  permissionId  BigInt   @id @default(autoincrement()) @map("permission_id")
+  code          String   @unique @db.VarChar(100)  // e.g., "task.add", "task.edit_own"
+  name          String   @db.VarChar(150)          // Display name: "Add Tasks"
+  description   String?  @db.Text
+  category      String   @db.VarChar(50)           // "tasks", "meetings", "calendar", etc.
+  sortOrder     Int      @default(0) @map("sort_order")
+  createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  roles RolePermission[]
+
+  @@index([category])
+  @@map("permissions")
+}
+
+model RolePermission {
+  id           BigInt   @id @default(autoincrement())
+  roleId       BigInt   @map("role_id")
+  permissionId BigInt   @map("permission_id")
+  granted      Boolean  @default(true)   // true = allowed, false = denied
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  role       Role       @relation(fields: [roleId], references: [roleId], onDelete: Cascade)
+  permission Permission @relation(fields: [permissionId], references: [permissionId], onDelete: Cascade)
+
+  @@unique([roleId, permissionId])
+  @@map("role_permissions")
+}
+
+// ============================================================================
+// DEPARTMENT MODULE - Department-based workflow scoping
+// ============================================================================
+
+model Department {
+  departmentId BigInt   @id @default(autoincrement()) @map("department_id")
+  tenantId     BigInt   @map("tenant_id")
+  name         String   @db.VarChar(100)
+  code         String   @db.VarChar(50)
+  description  String?  @db.Text
+  isActive     Boolean  @default(true) @map("is_active")
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt    DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt    DateTime? @map("deleted_at") @db.Timestamptz(6)
+
+  // Relations
+  tenant          Tenant @relation(fields: [tenantId], references: [tenantId], onDelete: Cascade)
+  users           UserDepartment[]
+  teams           Team[]
+  workspaces      Workspace[]
+  projects        Project[]
+  statuses        TaskStatus[]
+  sprintTemplates SprintTemplate[]
+
+  @@unique([tenantId, code])
+  @@index([tenantId])
+  @@map("departments")
+}
+
+model UserDepartment {
+  id           BigInt   @id @default(autoincrement())
+  userId       BigInt   @map("user_id")
+  departmentId BigInt   @map("department_id")
+  role         String   @default("MEMBER") @db.VarChar(20)  // ADMIN, MEMBER
+  isPrimary    Boolean  @default(false) @map("is_primary")
+  joinedAt     DateTime @default(now()) @map("joined_at") @db.Timestamptz(6)
+
+  user       User       @relation(fields: [userId], references: [userId], onDelete: Cascade)
+  department Department @relation(fields: [departmentId], references: [departmentId], onDelete: Cascade)
+
+  @@unique([userId, departmentId])
+  @@index([userId])
+  @@index([departmentId])
+  @@map("user_departments")
+}
+
+model Project {
+  projectId   BigInt   @id @default(autoincrement()) @map("project_id")
+  tenantId    BigInt   @map("tenant_id")
+  projectName String   @map("project_name") @db.VarChar(120)
+  description String?  @db.Text
+  startDate   DateTime? @map("start_date") @db.Date
+  endDate     DateTime? @map("end_date") @db.Date
+
+  ownerId   BigInt @map("owner_id")
+  createdBy BigInt @map("created_by")
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt DateTime? @map("deleted_at") @db.Timestamptz(6)
+
+  teamId      BigInt? @map("team_id")
+  workspaceId BigInt? @map("workspace_id")
+
+  tenant    Tenant @relation(fields: [tenantId], references: [tenantId], onDelete: Cascade)
+  owner     User @relation("ProjectOwner", fields: [ownerId], references: [userId], onDelete: Restrict)
+  creator   User @relation("ProjectCreatedBy", fields: [createdBy], references: [userId], onDelete: Restrict)
+
+  team      Team? @relation(fields: [teamId], references: [teamId], onDelete: SetNull)
+  assignedTeams Team[] @relation("ProjectAssignedTeams")
+  workspace Workspace? @relation(fields: [workspaceId], references: [workspaceId], onDelete: SetNull)
+  department Department? @relation(fields: [departmentId], references: [departmentId], onDelete: SetNull)
+
+  departmentId BigInt? @map("department_id")
+
+  members   ProjectMember[]
+  tasks     Task[]
+  milestones Milestone[]
+  sprints   Sprint[]
+  bugReports BugReport[]
+  announcements Announcement[]
+  statuses  TaskStatus[]  // Project owns its task statuses
+
+  @@index([tenantId])
+  @@map("projects")
+}
+
+model ProjectMember {
+  memberId  BigInt   @id @default(autoincrement()) @map("member_id")
+  projectId BigInt   @map("project_id")
+  userId    BigInt   @map("user_id")
+  joinedAt  DateTime @default(now()) @map("joined_at") @db.Timestamptz(6)
+
+  project Project @relation(fields: [projectId], references: [projectId], onDelete: Cascade)
+  user    User    @relation(fields: [userId], references: [userId], onDelete: Cascade)
+
+  @@unique([projectId, userId])
+  @@map("project_members")
+}
+
+model Task {
+  taskId       BigInt   @id @default(autoincrement()) @map("task_id")
+  projectId    BigInt   @map("project_id")
+  parentTaskId BigInt?  @map("parent_task_id")
+
+  // Project-scoped status
+  statusId     BigInt?  @map("status_id")      // FK to project's TaskStatus
+
+  taskName     String   @map("task_name") @db.VarChar(200)
+  description  String?  @db.Text
+  status       String   @default("TODO") @db.VarChar(50)  // Keep for backward compat
+  priority     String   @default("MEDIUM") @db.VarChar(50)
+  taskType     String   @default("TASK") @map("task_type") @db.VarChar(50)
+  estimatedHours Decimal? @map("estimated_hours") @db.Decimal(5, 2)
+  remainingHours Decimal? @map("remaining_hours") @db.Decimal(5, 2)
+  storyPoints  Int?     @map("story_points")
+  percentComplete Int   @default(0) @map("percent_complete")
+
+  createdBy    BigInt   @map("created_by")
+  assignedTo   BigInt?  @map("assigned_to")
+  testerId     BigInt?  @map("tester_id")
+
+  // DETAILS section fields
+  milestoneId  BigInt?  @map("milestone_id")
+  team         String?  @db.VarChar(100)
+  module       String?  @db.VarChar(200)
+  externalLink String?  @map("external_link") @db.VarChar(500)
+  buildVersion String?  @map("build_version") @db.VarChar(100)
+  startDate    DateTime? @map("start_date") @db.Date
+
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt    DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+  dueDate      DateTime? @map("due_date") @db.Timestamptz(6)
+  completedAt  DateTime? @map("completed_at") @db.Timestamptz(6)
+  deletedAt    DateTime? @map("deleted_at") @db.Timestamptz(6)
+
+  sprintId BigInt? @map("sprint_id")
+  teamId   BigInt? @map("team_assigned_id")
+
+  project   Project @relation(fields: [projectId], references: [projectId], onDelete: Cascade)
+  creator   User    @relation("TaskCreatedBy", fields: [createdBy], references: [userId], onDelete: Restrict)
+  assignee  User?   @relation("TaskAssignedTo", fields: [assignedTo], references: [userId], onDelete: SetNull)
+  tester    User?   @relation("TaskTester", fields: [testerId], references: [userId], onDelete: SetNull)
+  assignedTeam Team? @relation("TaskAssignedTeam", fields: [teamId], references: [teamId], onDelete: SetNull)
+  milestone    Milestone? @relation(fields: [milestoneId], references: [milestoneId], onDelete: SetNull)
+
+  // Status relation - belongs to project
+  taskStatus   TaskStatus? @relation(fields: [statusId], references: [statusId], onDelete: SetNull)
+
+  parent    Task?   @relation("TaskParent", fields: [parentTaskId], references: [taskId], onDelete: Cascade)
+  children  Task[]  @relation("TaskParent")
+
+  sprint    Sprint? @relation(fields: [sprintId], references: [sprintId], onDelete: SetNull)
+
+  comments      TaskComment[]
+  attachments   Attachment[]
+  timeEntries   TimeEntry[]
+  dependencies  TaskDependency[] @relation("TaskDependencies")
+  dependents    TaskDependency[] @relation("TaskDependents")
+  history       TaskHistory[]
+  checklists    Checklist[]
+  reminders     TaskReminder[]
+  labels        TaskLabel[]
+  meetings      Meeting[]
+  watchers      TaskWatcher[]
+
+  @@index([projectId])
+  @@index([assignedTo])
+  @@index([parentTaskId])
+  @@index([statusId])
+  @@map("tasks")
+}
+
+model TaskComment {
+  commentId   BigInt   @id @default(autoincrement()) @map("comment_id")
+  taskId      BigInt   @map("task_id")
+  userId      BigInt   @map("user_id")
+  commentText String   @map("comment_text") @db.Text
+
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt   DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt   DateTime? @map("deleted_at") @db.Timestamptz(6)
+
+  task Task @relation(fields: [taskId], references: [taskId], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [userId], onDelete: Restrict)
+
+  @@index([taskId])
+  @@map("task_comments")
+}
+
+model Attachment {
+  attachmentId BigInt   @id @default(autoincrement()) @map("attachment_id")
+  taskId       BigInt   @map("task_id")
+  fileName     String   @map("file_name") @db.VarChar(255)
+  filePath     String   @map("file_path") @db.VarChar(1024)
+  mimeType     String?  @map("mime_type") @db.VarChar(120)
+  fileSize     BigInt?  @map("file_size")
+  uploadedBy   BigInt?  @map("uploaded_by")
+  uploadedAt   DateTime @default(now()) @map("uploaded_at") @db.Timestamptz(6)
+
+  task Task @relation(fields: [taskId], references: [taskId], onDelete: Cascade)
+  uploader User? @relation(fields: [uploadedBy], references: [userId], onDelete: SetNull)
+
+  @@index([taskId])
+  @@map("attachments")
+}
+
+model TimeEntry {
+  timeEntryId BigInt   @id @default(autoincrement()) @map("time_entry_id")
+  taskId      BigInt   @map("task_id")
+  userId      BigInt   @map("user_id")
+  date        DateTime @db.Date
+  hours       Decimal  @db.Decimal(4, 2)
+  description String?  @db.VarChar(500)
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt   DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  task Task @relation(fields: [taskId], references: [taskId], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [userId], onDelete: Cascade)
+
+  @@unique([taskId, userId, date])
+  @@index([taskId])
+  @@index([userId])
+  @@index([date])
+  @@map("time_entries")
+}
+
+model TaskDependency {
+  dependencyId    BigInt @id @default(autoincrement()) @map("dependency_id")
+  taskId          BigInt @map("task_id")
+  dependentTaskId BigInt @map("dependent_task_id")
+
+  task      Task @relation("TaskDependencies", fields: [taskId], references: [taskId], onDelete: Cascade)
+  dependent Task @relation("TaskDependents", fields: [dependentTaskId], references: [taskId], onDelete: Cascade)
+
+  @@unique([taskId, dependentTaskId])
+  @@map("task_dependencies")
+}
+
+model TaskHistory {
+  historyId        BigInt   @id @default(autoincrement()) @map("history_id")
+  taskId           BigInt   @map("task_id")
+  changedBy        BigInt   @map("changed_by")
+  changeDescription String  @map("change_description") @db.Text
+  changedAt        DateTime @default(now()) @map("changed_at") @db.Timestamptz(6)
+
+  task Task @relation(fields: [taskId], references: [taskId], onDelete: Cascade)
+  user User @relation(fields: [changedBy], references: [userId], onDelete: Restrict)
+
+  @@map("task_history")
+}
+
+model Milestone {
+  milestoneId   BigInt   @id @default(autoincrement()) @map("milestone_id")
+  projectId     BigInt   @map("project_id")
+  milestoneName String   @map("milestone_name") @db.VarChar(150)
+  dueDate       DateTime? @map("due_date") @db.Timestamptz(6)
+  createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  project Project @relation(fields: [projectId], references: [projectId], onDelete: Cascade)
+  tasks   Task[]
+
+  @@map("milestones")
+}
+
+model Notification {
+  notificationId   BigInt   @id @default(autoincrement()) @map("notification_id")
+  userId           BigInt   @map("user_id")
+  notificationText String   @map("notification_text") @db.Text
+  entityType       String?  @map("entity_type") @db.VarChar(50)
+  entityId         String?  @map("entity_id") @db.VarChar(50)
+  isRead           Boolean  @default(false) @map("is_read")
+  createdAt        DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  user User @relation(fields: [userId], references: [userId], onDelete: Cascade)
+
+  @@map("notifications")
+}
+
+model UserPreference {
+  preferenceId    BigInt @id @default(autoincrement()) @map("preference_id")
+  userId          BigInt @map("user_id")
+  preferenceName  String @map("preference_name") @db.VarChar(80)
+  preferenceValue String @map("preference_value") @db.VarChar(255)
+
+  user User @relation(fields: [userId], references: [userId], onDelete: Cascade)
+
+  @@unique([userId, preferenceName])
+  @@map("user_preferences")
+}
+
+model ActivityLog {
+  logId        BigInt   @id @default(autoincrement()) @map("log_id")
+  userId       BigInt   @map("user_id")
+  activityType String   @map("activity_type") @db.VarChar(80)
+  details      String?  @db.Text
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  user User @relation(fields: [userId], references: [userId], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("activity_logs")
+}
+
+model BugReport {
+  bugId         BigInt   @id @default(autoincrement()) @map("bug_id")
+  projectId     BigInt   @map("project_id")
+  reportedBy    BigInt   @map("reported_by")
+  bugDescription String  @map("bug_description") @db.Text
+  reportedAt    DateTime @default(now()) @map("reported_at") @db.Timestamptz(6)
+  priority      String   @default("MEDIUM") @db.VarChar(50)
+  status        String   @default("OPEN") @db.VarChar(50)
+
+  project Project @relation(fields: [projectId], references: [projectId], onDelete: Cascade)
+  reporter User   @relation(fields: [reportedBy], references: [userId], onDelete: Restrict)
+
+  @@map("bug_reports")
+}
+
+model Checklist {
+  checklistId   BigInt   @id @default(autoincrement()) @map("checklist_id")
+  taskId        BigInt   @map("task_id")
+  checklistName String   @map("checklist_name") @db.VarChar(150)
+  createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  task Task @relation(fields: [taskId], references: [taskId], onDelete: Cascade)
+  items ChecklistItem[]
+
+  @@map("checklists")
+}
+
+model ChecklistItem {
+  checklistItemId BigInt  @id @default(autoincrement()) @map("checklist_item_id")
+  checklistId     BigInt  @map("checklist_id")
+  itemName        String  @map("item_name") @db.VarChar(200)
+  isCompleted     Boolean @default(false) @map("is_completed")
+
+  checklist Checklist @relation(fields: [checklistId], references: [checklistId], onDelete: Cascade)
+
+  @@map("checklist_items")
+}
+
+model TaskReminder {
+  reminderId   BigInt   @id @default(autoincrement()) @map("reminder_id")
+  taskId       BigInt   @map("task_id")
+  reminderText String   @map("reminder_text") @db.VarChar(200)
+  reminderTime DateTime @map("reminder_time") @db.Timestamptz(6)
+
+  task Task @relation(fields: [taskId], references: [taskId], onDelete: Cascade)
+
+  @@map("task_reminders")
+}
+
+model Label {
+  labelId    BigInt  @id @default(autoincrement()) @map("label_id")
+  tenantId   BigInt? @map("tenant_id")  // null = system label, shared across tenants
+  labelName  String  @map("label_name") @db.VarChar(80)
+  labelColor String  @map("label_color") @db.VarChar(7)
+
+  tenant Tenant? @relation(fields: [tenantId], references: [tenantId], onDelete: Cascade)
+  tasks  TaskLabel[]
+
+  @@unique([tenantId, labelName])
+  @@index([tenantId])
+  @@map("labels")
+}
+
+model TaskLabel {
+  taskLabelId BigInt @id @default(autoincrement()) @map("task_label_id")
+  taskId      BigInt @map("task_id")
+  labelId     BigInt @map("label_id")
+
+  task  Task  @relation(fields: [taskId], references: [taskId], onDelete: Cascade)
+  label Label @relation(fields: [labelId], references: [labelId], onDelete: Cascade)
+
+  @@unique([taskId, labelId])
+  @@map("task_labels")
+}
+
+model Sprint {
+  sprintId   BigInt @id @default(autoincrement()) @map("sprint_id")
+  projectId  BigInt @map("project_id")
+  sprintName String @map("sprint_name") @db.VarChar(120)
+  goal       String? @db.VarChar(500)
+  startDate  DateTime? @map("start_date") @db.Date
+  endDate    DateTime? @map("end_date") @db.Date
+  status     String? @db.VarChar(50)
+  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt  DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  project Project @relation(fields: [projectId], references: [projectId], onDelete: Cascade)
+  tasks   Task[]
+
+  @@map("sprints")
+}
+
+model Announcement {
+  announcementId   BigInt   @id @default(autoincrement()) @map("announcement_id")
+  projectId        BigInt   @map("project_id")
+  announcementText String   @map("announcement_text") @db.Text
+  createdBy        BigInt?  @map("created_by")
+  createdAt        DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  project Project @relation(fields: [projectId], references: [projectId], onDelete: Cascade)
+  creator User?    @relation(fields: [createdBy], references: [userId], onDelete: SetNull)
+
+  @@map("announcements")
+}
+
+model Team {
+  teamId       BigInt   @id @default(autoincrement()) @map("team_id")
+  tenantId     BigInt   @map("tenant_id")
+  teamName     String   @map("team_name") @db.VarChar(120)
+  ownerId      BigInt   @map("owner_id")
+  departmentId BigInt?  @map("department_id")  // Optional - null means cross-department team
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  tenant     Tenant      @relation(fields: [tenantId], references: [tenantId], onDelete: Cascade)
+  owner      User        @relation("TeamOwner", fields: [ownerId], references: [userId], onDelete: Restrict)
+  department Department? @relation(fields: [departmentId], references: [departmentId], onDelete: SetNull)
+  members    TeamMember[]
+  projects   Project[] // Projects where this team is the main team
+  assignedProjects Project[] @relation("ProjectAssignedTeams")
+  assignedTasks Task[] @relation("TaskAssignedTeam")
+
+  @@unique([tenantId, teamName])
+  @@index([tenantId])
+  @@index([departmentId])
+  @@map("teams")
+}
+
+model TeamMember {
+  teamMemberId BigInt   @id @default(autoincrement()) @map("team_member_id")
+  teamId       BigInt   @map("team_id")
+  userId       BigInt   @map("user_id")
+  joinedAt     DateTime @default(now()) @map("joined_at") @db.Timestamptz(6)
+
+  team Team @relation(fields: [teamId], references: [teamId], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [userId], onDelete: Cascade)
+
+  @@unique([teamId, userId])
+  @@map("team_members")
+}
+
+model Workspace {
+  workspaceId  BigInt   @id @default(autoincrement()) @map("workspace_id")
+  tenantId     BigInt   @map("tenant_id")
+  name         String   @db.VarChar(120)
+  description  String?  @db.Text
+  ownerId      BigInt   @map("owner_id")
+  departmentId BigInt?  @map("department_id")  // Department owns this workflow
+  isDefault    Boolean  @default(false) @map("is_default")  // Default workflow for department
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt    DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  tenant     Tenant      @relation(fields: [tenantId], references: [tenantId], onDelete: Cascade)
+  owner      User        @relation("WorkspaceOwner", fields: [ownerId], references: [userId], onDelete: Restrict)
+  department Department? @relation(fields: [departmentId], references: [departmentId], onDelete: SetNull)
+  members    WorkspaceMember[]
+  projects   Project[]
+
+  @@index([tenantId])
+  @@index([departmentId])
+  @@map("workspaces")
+}
+
+model WorkspaceMember {
+  id          BigInt   @id @default(autoincrement())
+  workspaceId BigInt   @map("workspace_id")
+  userId      BigInt   @map("user_id")
+  role        String   @default("MEMBER") @db.VarChar(50)
+  joinedAt    DateTime @default(now()) @map("joined_at") @db.Timestamptz(6)
+
+  workspace Workspace @relation(fields: [workspaceId], references: [workspaceId], onDelete: Cascade)
+  user      User      @relation(fields: [userId], references: [userId], onDelete: Cascade)
+
+  @@unique([workspaceId, userId])
+  @@map("workspace_members")
+}
+
+model Meeting {
+  meetingId   BigInt   @id @default(autoincrement()) @map("meeting_id")
+  tenantId    BigInt   @map("tenant_id")
+  title       String   @db.VarChar(200)
+  description String?  @db.Text
+  agenda      String?  @db.Text
+  startTime   DateTime @map("start_time") @db.Timestamptz(6)
+  endTime     DateTime @map("end_time") @db.Timestamptz(6)
+  duration    Int?     // minutes (optional, can be computed from start/end)
+  location    String?  @db.VarChar(500)
+  meetingUrl  String?  @map("meeting_url") @db.VarChar(1024)
+  status      String   @default("SCHEDULED") @db.VarChar(50)
+  taskId      BigInt?  @map("task_id")
+  createdBy   BigInt   @map("created_by")
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt   DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  tenant    Tenant  @relation(fields: [tenantId], references: [tenantId], onDelete: Cascade)
+  task      Task?   @relation(fields: [taskId], references: [taskId], onDelete: SetNull)
+  creator   User    @relation("MeetingCreator", fields: [createdBy], references: [userId], onDelete: Restrict)
+  attendees MeetingAttendee[]
+  attachments MeetingAttachment[]
+
+  @@index([tenantId])
+  @@map("meetings")
+}
+
+model MeetingAttendee {
+  id        BigInt   @id @default(autoincrement())
+  meetingId BigInt   @map("meeting_id")
+  userId    BigInt   @map("user_id")
+  status    String   @default("PENDING") @db.VarChar(50)
+  joinedAt  DateTime @default(now()) @map("joined_at") @db.Timestamptz(6)
+
+  meeting Meeting @relation(fields: [meetingId], references: [meetingId], onDelete: Cascade)
+  user    User    @relation(fields: [userId], references: [userId], onDelete: Cascade)
+
+  @@unique([meetingId, userId])
+  @@map("meeting_attendees")
+}
+
+model MeetingAttachment {
+  attachmentId BigInt   @id @default(autoincrement()) @map("attachment_id")
+  meetingId    BigInt   @map("meeting_id")
+  fileName     String   @map("file_name") @db.VarChar(255)
+  filePath     String   @map("file_path") @db.VarChar(1024)
+  mimeType     String?  @map("mime_type") @db.VarChar(120)
+  fileSize     BigInt?  @map("file_size")
+  uploadedBy   BigInt?  @map("uploaded_by")
+  uploadedAt   DateTime @default(now()) @map("uploaded_at") @db.Timestamptz(6)
+
+  meeting  Meeting @relation(fields: [meetingId], references: [meetingId], onDelete: Cascade)
+  uploader User?   @relation(fields: [uploadedBy], references: [userId], onDelete: SetNull)
+
+  @@index([meetingId])
+  @@map("meeting_attachments")
+}
+
+model PasswordSetupToken {
+  tokenId   BigInt    @id @default(autoincrement()) @map("token_id")
+  userId    BigInt    @map("user_id")
+  token     String    @unique @db.VarChar(255)
+  expiresAt DateTime  @map("expires_at") @db.Timestamptz(6)
+  usedAt    DateTime? @map("used_at") @db.Timestamptz(6)
+  createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  user User @relation(fields: [userId], references: [userId], onDelete: Cascade)
+
+  @@map("password_setup_tokens")
+}
+
+model ChatThread {
+  threadId  BigInt   @id @default(autoincrement()) @map("thread_id")
+  tenantId  BigInt   @map("tenant_id")
+  title     String?  @db.VarChar(200)
+  isGroup   Boolean  @default(false) @map("is_group")
+  createdBy BigInt   @map("created_by")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt DateTime? @map("deleted_at") @db.Timestamptz(6)
+
+  tenant       Tenant            @relation(fields: [tenantId], references: [tenantId], onDelete: Cascade)
+  creator      User              @relation("ChatThreadCreator", fields: [createdBy], references: [userId], onDelete: Restrict)
+  participants ChatParticipant[]
+  messages     ChatMessage[]
+
+  @@index([tenantId])
+  @@map("chat_threads")
+}
+
+model ChatParticipant {
+  participantId BigInt   @id @default(autoincrement()) @map("participant_id")
+  threadId      BigInt   @map("thread_id")
+  userId        BigInt   @map("user_id")
+  isBlocked     Boolean  @default(false) @map("is_blocked")
+  isMarked      Boolean  @default(false) @map("is_marked")
+  lastReadAt    DateTime? @map("last_read_at") @db.Timestamptz(6)
+  createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  thread ChatThread @relation(fields: [threadId], references: [threadId], onDelete: Cascade)
+  user   User       @relation("ChatParticipantUser", fields: [userId], references: [userId], onDelete: Cascade)
+
+  @@unique([threadId, userId])
+  @@map("chat_participants")
+}
+
+model ChatMessage {
+  messageId BigInt   @id @default(autoincrement()) @map("message_id")
+  threadId  BigInt   @map("thread_id")
+  senderId  BigInt   @map("sender_id")
+  content   String   @db.Text
+  isEdited  Boolean  @default(false) @map("is_edited")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime? @map("updated_at") @db.Timestamptz(6)
+  deletedAt DateTime? @map("deleted_at") @db.Timestamptz(6)
+
+  // Attachment fields
+  attachmentUrl  String?  @map("attachment_url") @db.VarChar(1024)
+  attachmentType String?  @map("attachment_type") @db.VarChar(50)
+  attachmentName String?  @map("attachment_name") @db.VarChar(255)
+
+  thread ChatThread @relation(fields: [threadId], references: [threadId], onDelete: Cascade)
+  sender User       @relation("ChatMessageSender", fields: [senderId], references: [userId], onDelete: Cascade)
+  reactions ChatMessageReaction[]
+
+  @@index([threadId, createdAt])
+  @@index([threadId, messageId])
+  @@map("chat_messages")
+}
+
+model ChatMessageReaction {
+  reactionId BigInt   @id @default(autoincrement()) @map("reaction_id")
+  messageId  BigInt   @map("message_id")
+  userId     BigInt   @map("user_id")
+  emoji      String   @db.VarChar(50)
+  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  message ChatMessage @relation(fields: [messageId], references: [messageId], onDelete: Cascade)
+  user    User        @relation("ChatReactionUser", fields: [userId], references: [userId], onDelete: Cascade)
+
+  @@unique([messageId, userId, emoji])
+  @@map("chat_message_reactions")
+}
+
+model TaskWatcher {
+  watcherId BigInt   @id @default(autoincrement()) @map("watcher_id")
+  taskId    BigInt   @map("task_id")
+  userId    BigInt   @map("user_id")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  task Task @relation(fields: [taskId], references: [taskId], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [userId], onDelete: Cascade)
+
+  @@unique([taskId, userId])
+  @@map("task_watchers")
+}
+
+model TaskStatus {
+  statusId     BigInt    @id @default(autoincrement()) @map("status_id")
+  tenantId     BigInt?   @map("tenant_id")  // null = system template
+  projectId    BigInt?   @map("project_id")  // Belongs to project (null = global template)
+  departmentId BigInt?   @map("department_id")
+  name         String    @db.VarChar(100)
+  code         String    @db.VarChar(50)
+  color        String    @default("#64748B") @db.VarChar(7)
+  sortOrder    Int       @default(0) @map("sort_order")
+  isDefault    Boolean   @default(false) @map("is_default")
+  isTerminal   Boolean   @default(false) @map("is_terminal")  // Marks completed/end states
+  createdAt    DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt    DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  tenant      Tenant?     @relation(fields: [tenantId], references: [tenantId], onDelete: Cascade)
+  project     Project?    @relation(fields: [projectId], references: [projectId], onDelete: Cascade)
+  department  Department? @relation(fields: [departmentId], references: [departmentId], onDelete: Cascade)
+  tasks       Task[]      // Tasks using this status
+
+  @@unique([tenantId, projectId, departmentId, code])
+  @@index([tenantId])
+  @@index([projectId])
+  @@index([departmentId])
+  @@map("task_statuses")
+}
+
+model SprintTemplate {
+  templateId    BigInt   @id @default(autoincrement()) @map("template_id")
+  departmentId  BigInt   @map("department_id")
+  name          String   @db.VarChar(120)           // e.g., "2-Week Development Sprint"
+  namePattern   String?  @map("name_pattern") @db.VarChar(200)  // e.g., "Sprint {number}"
+  durationDays  Int      @default(14) @map("duration_days")
+  goalTemplate  String?  @map("goal_template") @db.Text  // Default goal text
+  isDefault     Boolean  @default(false) @map("is_default")
+  createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt     DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  department Department @relation(fields: [departmentId], references: [departmentId], onDelete: Cascade)
+
+  @@index([departmentId])
+  @@map("sprint_templates")
+}
+
+// ============================================================================
+// PAYMENT HISTORY - Track subscription payments
+// ============================================================================
+
+model PaymentHistory {
+  paymentId       BigInt   @id @default(autoincrement()) @map("payment_id")
+  tenantId        BigInt   @map("tenant_id")
+  amount          Int                                   // Amount in cents (e.g., 999 = $9.99)
+  currency        String   @default("usd") @db.VarChar(3)
+  status          String   @default("succeeded") @db.VarChar(50)  // succeeded, failed, pending, refunded
+  paymentProvider String   @map("payment_provider") @db.VarChar(50)  // stripe, paypal
+  externalId      String?  @map("external_id") @db.VarChar(255)  // Payment ID from provider
+  plan            String   @db.VarChar(50)               // STARTER, PRO, ENTERPRISE
+  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  tenant Tenant @relation(fields: [tenantId], references: [tenantId], onDelete: Cascade)
+
+  @@index([tenantId])
+  @@index([createdAt])
+  @@map("payment_history")
+}
+
+// ============================================================================
+// USAGE ALERTS - Track usage threshold notifications
+// ============================================================================
+
+model UsageAlert {
+  alertId     BigInt   @id @default(autoincrement()) @map("alert_id")
+  tenantId    BigInt   @map("tenant_id")
+  alertType   String   @map("alert_type") @db.VarChar(50)  // users, projects, tasks, storage
+  threshold   Int      // 80, 90, 100
+  percentage  Int      // Actual percentage when alert was sent
+  sentViaEmail Boolean @default(false) @map("sent_via_email")
+  sentViaApp  Boolean  @default(true) @map("sent_via_app")
+  sentAt      DateTime @default(now()) @map("sent_at") @db.Timestamptz(6)
+  
+  tenant Tenant @relation(fields: [tenantId], references: [tenantId], onDelete: Cascade)
+  
+  @@unique([tenantId, alertType, threshold])
+  @@index([tenantId])
+  @@map("usage_alerts")
+}
