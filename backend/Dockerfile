@@ -15,17 +15,9 @@ COPY backend/prisma ./prisma/
 # Install ALL dependencies (including devDependencies for build)
 RUN npm ci
 
-# Generate Prisma client before compiling
-RUN npx prisma generate
-
 # Copy source and compile TypeScript
 COPY backend/ .
 RUN npm run build
-
-# Compile seed.ts separately (nest build only includes NestJS module graph)
-# Use tsc with project config but don't wipe the dist dir
-RUN npx tsc --project tsconfig.build.json --outDir dist --rootDir src \
-    && ls -la dist/seed.js
 
 # ─────────────────────────────────────────
 # Stage 2: Production image
@@ -43,9 +35,11 @@ ENV NODE_ENV=production
 COPY --from=builder /app/package*.json ./
 COPY --from=builder /app/prisma ./prisma/
 COPY --from=builder /app/dist ./dist/
+COPY --from=builder /app/src ./src/
+COPY --from=builder /app/tsconfig*.json ./
 
-# Install production dependencies only (re-runs prisma generate)
-RUN npm ci --omit=dev && npx prisma generate
+# Install production dependencies only (re-runs prisma generate), plus ts-node for seeding
+RUN npm ci --omit=dev && npm install ts-node typescript && npx prisma generate
 
 EXPOSE 3000
 
