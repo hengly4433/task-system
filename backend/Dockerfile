@@ -26,8 +26,8 @@ FROM node:22-alpine AS runner
 
 WORKDIR /app
 
-# Install dumb-init for proper signal handling
-RUN apk add --no-cache dumb-init
+# Install dumb-init for proper signal handling and openssl for Prisma
+RUN apk add --no-cache dumb-init openssl
 
 ENV NODE_ENV=production
 
