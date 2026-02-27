@@ -22,11 +22,10 @@ RUN npx prisma generate
 COPY backend/ .
 RUN npm run build
 
-# Ensure seed.js exists in dist (nest build may skip standalone scripts)
-RUN if [ ! -f dist/seed.js ]; then \
-    echo "seed.js not found in dist, compiling separately..." && \
-    npx tsc -p tsconfig.build.json; \
-    fi
+# Compile seed.ts separately (nest build only includes NestJS module graph)
+# Use tsc with project config but don't wipe the dist dir
+RUN npx tsc --project tsconfig.build.json --outDir dist --rootDir src \
+    && ls -la dist/seed.js
 
 # ─────────────────────────────────────────
 # Stage 2: Production image
