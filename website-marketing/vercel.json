@@ -1,0 +1,9 @@
+{
+  "buildCommand": "npm run build",
+  "installCommand": "npm ci",
+  "framework": "nextjs",
+  "env": {
+    "NEXT_PUBLIC_API_URL": "https://biti-backend.onrender.com/api",
+    "NEXT_PUBLIC_ADMIN_URL": "https://biti-frontend.vercel.app"
+  }
+}
