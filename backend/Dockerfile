@@ -38,8 +38,8 @@ COPY --from=builder /app/dist ./dist/
 COPY --from=builder /app/src ./src/
 COPY --from=builder /app/tsconfig*.json ./
 
-# Install production dependencies only (re-runs prisma generate), plus ts-node for seeding
-RUN npm ci --omit=dev && npm install ts-node typescript && npx prisma generate
+# Install production dependencies only (re-runs prisma generate), plus tsx for seeding
+RUN npm ci --omit=dev && npm install tsx && npx prisma generate
 
 EXPOSE 3000
 
