@@ -1,7 +1,7 @@
 import { NestFactory } from '@nestjs/core';
-import { AppModule } from '../src/app.module';
-import { PermissionsService } from '../src/modules/permissions/permissions.service';
-import { PrismaService } from '../src/common/database/prisma.service';
+import { AppModule } from './app.module';
+import { PermissionsService } from './modules/permissions/permissions.service';
+import { PrismaService } from './common/database/prisma.service';
 import * as bcrypt from 'bcrypt';
 
 /**
