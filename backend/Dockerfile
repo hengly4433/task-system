@@ -6,8 +6,8 @@ FROM node:22-alpine AS builder
 WORKDIR /app
 
 # Copy dependency manifests first for better layer caching
-COPY package*.json ./
-COPY prisma ./prisma/
+COPY backend/package*.json ./
+COPY backend/prisma ./prisma/
 
 # Install ALL dependencies (including devDependencies for build)
 RUN npm ci
@@ -16,7 +16,7 @@ RUN npm ci
 RUN npx prisma generate
 
 # Copy source and compile TypeScript
-COPY . .
+COPY backend/ .
 RUN npm run build
 
 # ─────────────────────────────────────────
