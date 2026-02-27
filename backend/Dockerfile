@@ -5,6 +5,9 @@ FROM node:22-alpine AS builder
 
 WORKDIR /app
 
+# Install OpenSSL so Prisma detects the correct engine binary
+RUN apk add --no-cache openssl
+
 # Copy dependency manifests first for better layer caching
 COPY backend/package*.json ./
 COPY backend/prisma ./prisma/
