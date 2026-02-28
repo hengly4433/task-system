@@ -11,5 +11,10 @@
   ],
   "env": {
     "VITE_API_URL": "https://biti-backend.onrender.com/api"
+  },
+  "build": {
+    "env": {
+      "VITE_API_URL": "https://biti-backend.onrender.com/api"
+    }
   }
 }

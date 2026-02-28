@@ -61,7 +61,9 @@ services:
       # ── Frontend URL (for CORS & redirects) ──
       # Update to your Vercel frontend URL after deploy
       - key: FRONTEND_URL
-        value: https://biti-frontend.vercel.app
+        value: https://task-system-khaki.vercel.app
+      - key: CORS_ORIGINS
+        value: https://task-system-khaki.vercel.app,http://localhost:5173
 
       # ── Stripe ──
       - key: STRIPE_PUBLISHABLE_KEY
