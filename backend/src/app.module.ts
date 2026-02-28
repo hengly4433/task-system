@@ -45,6 +45,8 @@ import { SprintTemplatesModule } from './modules/sprint-templates';
 import { PermissionsModule } from './modules/permissions';
 import { TenantsModule } from './modules/tenants/tenants.module';
 
+import { HealthController } from './health.controller';
+
 @Module({
   imports: [
     ConfigModule.forRoot({
@@ -96,7 +98,7 @@ import { TenantsModule } from './modules/tenants/tenants.module';
     PermissionsModule,
     TenantsModule,
   ],
-  controllers: [],
+  controllers: [HealthController],
   providers: [
     {
       provide: APP_GUARD,
