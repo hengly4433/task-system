@@ -79,6 +79,61 @@ export class NotificationsService {
     });
   }
 
+  async delete(notificationId: string, userId: bigint): Promise<void> {
+    const tenantId = this.tenantContext.requireTenantId();
+    const notification = await this.prisma.notification.findFirst({
+      where: { 
+        notificationId: BigInt(notificationId),
+        userId,
+        user: {
+          tenantMembers: {
+            some: {
+              tenantId,
+            }
+          }
+        }
+      },
+    });
+    if (!notification) throw new NotFoundException('Notification not found');
+
+    await this.prisma.notification.delete({
+      where: { notificationId: BigInt(notificationId) },
+    });
+  }
+
+  async deleteAll(userId: bigint): Promise<void> {
+    const tenantId = this.tenantContext.requireTenantId();
+    await this.prisma.notification.deleteMany({
+      where: { 
+        userId,
+        user: {
+          tenantMembers: {
+            some: {
+              tenantId,
+            }
+          }
+        }
+      },
+    });
+  }
+
+  async getUnreadCount(userId: bigint): Promise<number> {
+    const tenantId = this.tenantContext.requireTenantId();
+    return this.prisma.notification.count({
+      where: {
+        userId,
+        isRead: false,
+        user: {
+          tenantMembers: {
+            some: {
+              tenantId,
+            }
+          }
+        }
+      },
+    });
+  }
+
   async createNotification(
     userId: bigint,
     notificationText: string,
