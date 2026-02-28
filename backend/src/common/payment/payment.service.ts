@@ -1,4 +1,4 @@
-import { Injectable, Logger, BadRequestException } from '@nestjs/common';
+import { Injectable, Logger, BadRequestException, OnModuleInit } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../database';
 import { TenantContextService } from '../tenant';
@@ -6,17 +6,19 @@ import { getPlanPricing, PLAN_PRICING } from './plan-pricing';
 import Stripe from 'stripe';
 
 @Injectable()
-export class PaymentService {
+export class PaymentService implements OnModuleInit {
   private readonly logger = new Logger(PaymentService.name);
-  private readonly stripe: Stripe;
+  private stripe: Stripe;
 
   constructor(
     private readonly configService: ConfigService,
     private readonly prisma: PrismaService,
     private readonly tenantContext: TenantContextService,
-  ) {
+  ) {}
+
+  onModuleInit() {
     this.stripe = new Stripe(
-      this.configService.get('STRIPE_SECRET_KEY', ''),
+      this.configService.get('STRIPE_SECRET_KEY', '') || 'sk_test_123',
     );
   }
 
