@@ -41,7 +41,6 @@ COPY --from=builder /app/tsconfig*.json ./
 # Install production dependencies only (re-runs prisma generate)
 RUN npm ci --omit=dev && npx prisma generate
 
-EXPOSE 3000
 
 # prestart:prod runs migrate + generate before starting
 ENTRYPOINT ["dumb-init", "--"]
