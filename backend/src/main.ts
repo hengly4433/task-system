@@ -53,8 +53,14 @@ async function bootstrap() {
   SwaggerModule.setup('api/docs', app, document);
 
   const configService = app.get(ConfigService);
-  const port = configService.get<number>('PORT') || process.env.PORT || 3000;
   
+  // Strictly prioritize Render's dynamically injected process.env.PORT
+  const rawEnvPort = process.env.PORT;
+  const configPort = configService.get<number>('PORT');
+  const port = rawEnvPort ? parseInt(rawEnvPort, 10) : (configPort || 3000);
+  
+  console.log(`[BOOTSTRAP] rawEnvPort: ${rawEnvPort} | configPort: ${configPort} | finalPort: ${port}`);
+
   await app.listen(port, '0.0.0.0');
   console.log(`🚀 Application is running on: http://0.0.0.0:${port}/api`);
   console.log(`📚 Swagger documentation: http://0.0.0.0:${port}/api/docs`);
