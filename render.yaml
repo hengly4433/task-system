@@ -14,8 +14,6 @@ services:
       # ── Node ──
       - key: NODE_ENV
         value: production
-      - key: PORT
-        value: "3000"
 
       # ── Database (Supabase Postgres) ──
       - key: DATABASE_URL
