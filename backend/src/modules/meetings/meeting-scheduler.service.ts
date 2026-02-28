@@ -1,7 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { PrismaService } from '../../common/database';
-import { NotificationsService } from '../notifications/notifications.service';
+import { NotificationsGateway } from '../notifications/notifications.gateway';
 
 @Injectable()
 export class MeetingSchedulerService {
@@ -9,7 +9,7 @@ export class MeetingSchedulerService {
 
   constructor(
     private readonly prisma: PrismaService,
-    private readonly notificationsService: NotificationsService,
+    private readonly notificationsGateway: NotificationsGateway,
   ) {}
 
   /**
@@ -81,12 +81,25 @@ export class MeetingSchedulerService {
         for (const attendee of meeting.attendees) {
           const notificationText = `⏰ Reminder: Meeting "${meetingTitle}" starts in 15 minutes at ${startTime}`;
 
-          await this.notificationsService.createNotification(
-            attendee.userId,
-            notificationText,
-            'MEETING',
-            meeting.meetingId.toString(),
-          );
+          // Create notification in DB
+          const notification = await this.prisma.notification.create({
+            data: {
+              userId: attendee.userId,
+              notificationText,
+              entityType: 'MEETING',
+              entityId: meeting.meetingId.toString(),
+            },
+          });
+
+          // Send real-time notification
+          this.notificationsGateway.sendToUser(attendee.userId, {
+            notificationId: notification.notificationId.toString(),
+            notificationText: notification.notificationText,
+            entityType: notification.entityType,
+            entityId: notification.entityId,
+            isRead: notification.isRead,
+            createdAt: notification.createdAt.toISOString(),
+          });
 
           this.logger.debug(
             `Sent reminder to user ${attendee.user.fullName || attendee.user.username}`,
